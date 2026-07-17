@@ -198,25 +198,27 @@ async def list_contacts(
                     "phones": [],
                     "emails": [],
                     "addresses": [],
+                    "organization": "",
+                    "title": "",
                     "url": vcard_data['url']
                 }
-                
+
                 # Extract name
                 if hasattr(vcard, 'fn') and vcard.fn and hasattr(vcard.fn, 'value'):
                     contact["name"] = str(vcard.fn.value)
-                
+
                 # Extract phone numbers
                 if hasattr(vcard, 'tel_list'):
                     for tel in vcard.tel_list:
                         if hasattr(tel, 'value') and tel.value:
                             contact["phones"].append(str(tel.value))
-                
+
                 # Extract emails
                 if hasattr(vcard, 'email_list'):
                     for em in vcard.email_list:
                         if hasattr(em, 'value') and em.value:
                             contact["emails"].append(str(em.value))
-                
+
                 # Extract addresses
                 if hasattr(vcard, 'adr_list'):
                     for adr in vcard.adr_list:
@@ -227,9 +229,20 @@ async def list_contacts(
                                     contact["addresses"].append(addr_str)
                             except Exception as _e:
                                 continue
-                
-                # Only add contact if it has a name or at least one other field
-                if contact["name"] or contact["phones"] or contact["emails"]:
+
+                # Extract organization
+                if hasattr(vcard, 'org') and vcard.org.value:
+                    contact["organization"] = str(vcard.org.value[0])
+
+                # Extract title
+                if hasattr(vcard, 'title') and hasattr(vcard.title, 'value'):
+                    contact["title"] = str(vcard.title.value)
+
+                # Only add contact if it has at least one populated field.
+                # Company-only cards (org + address, no personal name/phone/
+                # email) were previously dropped entirely by this filter.
+                if (contact["name"] or contact["phones"] or contact["emails"]
+                        or contact["addresses"] or contact["organization"] or contact["title"]):
                     result.append(contact)
                     count += 1
             
