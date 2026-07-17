@@ -437,8 +437,19 @@ async def update_contact(
         
         # Update fields
         if name:
-            vcard.fn.value = name
-        
+            if hasattr(vcard, 'fn'):
+                vcard.fn.value = name
+            else:
+                vcard.add('fn').value = name
+
+            # Keep the structured name (N) in sync with FN. Most CardDAV
+            # clients, including Apple's Contacts app, display/sort by N
+            # rather than FN, so updating only FN leaves the old name visible.
+            if hasattr(vcard, 'n'):
+                vcard.n.value = vobject.vcard.Name(family='', given=name)
+            else:
+                vcard.add('n').value = vobject.vcard.Name(family='', given=name)
+
         if phones is not None:
             # Remove existing phones
             if hasattr(vcard, 'tel_list'):
