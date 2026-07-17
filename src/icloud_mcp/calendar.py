@@ -2,7 +2,8 @@
 
 import caldav
 import smtplib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from dateutil import tz as dateutil_tz
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
 from email.mime.multipart import MIMEMultipart
@@ -10,6 +11,23 @@ from email.mime.text import MIMEText
 from fastmcp import Context
 from .auth import require_auth
 from .config import config
+
+
+def _normalize_for_ical(dt: datetime) -> datetime:
+    """Convert a timezone-aware datetime to UTC using a tzinfo vobject can
+    serialize (stdlib's datetime.timezone.utc isn't recognized by vobject's
+    TZID resolver and raises VObjectError on serialize). Naive datetimes are
+    left untouched as floating local time."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(dateutil_tz.tzutc())
+    return dt
+
+
+def _format_ical_dt(dt: datetime) -> str:
+    """Format a datetime for a manually-built iCalendar DTSTART/DTEND line."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(dateutil_tz.tzutc()).strftime('%Y%m%dT%H%M%SZ')
+    return dt.strftime('%Y%m%dT%H%M%S')
 
 
 def _get_caldav_client(email: str, password: str) -> caldav.DAVClient:
@@ -321,6 +339,7 @@ async def create_event(
     start_dt = datetime.fromisoformat(start)
     end_dt = datetime.fromisoformat(end)
     now = datetime.now()
+    dtstamp = datetime.now(timezone.utc)
 
     # Generate UID without dots (iCloud compatible)
     uid = f"{int(now.timestamp())}{now.microsecond}@icloud-mcp"
@@ -332,9 +351,9 @@ PRODID:-//iCloud MCP//EN
 CALSCALE:GREGORIAN
 BEGIN:VEVENT
 UID:{uid}
-DTSTAMP:{now.strftime('%Y%m%dT%H%M%SZ')}
-DTSTART:{start_dt.strftime('%Y%m%dT%H%M%S')}
-DTEND:{end_dt.strftime('%Y%m%dT%H%M%S')}
+DTSTAMP:{dtstamp.strftime('%Y%m%dT%H%M%SZ')}
+DTSTART:{_format_ical_dt(start_dt)}
+DTEND:{_format_ical_dt(end_dt)}
 SUMMARY:{summary}
 STATUS:CONFIRMED
 SEQUENCE:0
@@ -443,9 +462,9 @@ async def update_event(
     if summary:
         vevent.summary.value = summary
     if start:
-        vevent.dtstart.value = datetime.fromisoformat(start)
+        vevent.dtstart.value = _normalize_for_ical(datetime.fromisoformat(start))
     if end:
-        vevent.dtend.value = datetime.fromisoformat(end)
+        vevent.dtend.value = _normalize_for_ical(datetime.fromisoformat(end))
     if description is not None:
         if hasattr(vevent, 'description'):
             vevent.description.value = description
